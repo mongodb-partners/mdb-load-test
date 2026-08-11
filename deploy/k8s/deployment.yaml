@@ -5,10 +5,15 @@ metadata:
   labels:
     app: mdb-load-test
 spec:
-  replicas: 1
-  # Recreate (not RollingUpdate) so we never need 2x 12-vCPU/32Gi at once.
+  replicas: 2
+  # RollingUpdate: cluster has 3 nodes with ~32 vCPU/125Gi free each, so 2
+  # replicas at 12 vCPU/32Gi fit comfortably (and a 3rd transiently during a
+  # rolling update).
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: mdb-load-test
@@ -17,15 +22,39 @@ spec:
       labels:
         app: mdb-load-test
     spec:
-      # If the benchmark-api cluster cannot resolve the "*.external" MongoDB
-      # hostnames, uncomment and map them to the other cluster's node IPs:
-      # hostAliases:
-      #   - ip: "10.0.0.1"
-      #     hostnames: ["search-benchmarking-0.external"]
-      #   - ip: "10.0.0.2"
-      #     hostnames: ["search-benchmarking-1.external"]
-      #   - ip: "10.0.0.3"
-      #     hostnames: ["search-benchmarking-2.external"]
+      # The benchmark-api cluster cannot resolve the "*.external" MongoDB
+      # hostnames, so map them to the mongodb cluster's node IPs (same VPC,
+      # 10.3.13.x subnet; externalTrafficPolicy=Cluster so any node IP works
+      # for any NodePort):
+      hostAliases:
+        - ip: "10.3.13.14"
+          hostnames: ["search-benchmarking-0.external"]
+        - ip: "10.3.13.20"
+          hostnames: ["search-benchmarking-1.external"]
+        - ip: "10.3.13.12"
+          hostnames: ["search-benchmarking-2.external"]
+      imagePullSecrets:
+        - name: nebius-registry-cred
+      # The Java Mongo driver's `tlsCAFile` URI option doesn't reliably make the
+      # JVM trust the custom CA (PKIX path building failed). Build a Java
+      # truststore from ca.pem into an emptyDir and point the JVM at it via
+      # -Djavax.net.ssl.trustStore in JAVA_OPTS below.
+      initContainers:
+        - name: build-truststore
+          image: eclipse-temurin:21-jre-jammy
+          command:
+            - sh
+            - -c
+            - |
+              keytool -importcert -trustcacerts -noprompt \
+                -alias mongoCA -file /etc/mongo/ca.pem \
+                -keystore /truststore/truststore.jks -storepass changeit
+          volumeMounts:
+            - name: mongo-ca
+              mountPath: /etc/mongo
+              readOnly: true
+            - name: truststore
+              mountPath: /truststore
       containers:
         - name: mdb-load-test
           image: __IMAGE__
@@ -50,10 +79,13 @@ spec:
             - name: APP_USE_DB
               value: "true"
             - name: JAVA_OPTS
-              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -Djavax.net.ssl.trustStore=/truststore/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit"
           volumeMounts:
             - name: mongo-ca
               mountPath: /etc/mongo
+              readOnly: true
+            - name: truststore
+              mountPath: /truststore
               readOnly: true
           resources:
             requests:
@@ -84,3 +116,5 @@ spec:
         - name: mongo-ca
           secret:
             secretName: mdb-load-test-ca
+        - name: truststore
+          emptyDir: {}
