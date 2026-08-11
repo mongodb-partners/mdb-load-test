@@ -1,0 +1,12 @@
+target/
+*.class
+*.jtl
+*.log
+.env
+.env.deploy
+deploy/.env.deploy
+*.pem
+.idea/
+*.iml
+.DS_Store
+jmeter-report/

@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: mdb-load-test
+  data:
+    mongodb:
+      # Connection string. Override via env: MONGODB_URI
+      uri: ${MONGODB_URI:mongodb://localhost:27017/loadtest}
+      # Used only if the URI has no database in its path (e.g. ".../?authSource=admin").
+      database: ${MONGODB_DATABASE:loadtest}
+      auto-index-creation: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# ---- Application (load-test) settings -------------------------------------
+app:
+  # Global flag. true  -> endpoints hit MongoDB.
+  #             false -> endpoints skip the DB and return a canned response
+  #                      after sleeping `simulated-wait-ms` (fixed baseline latency).
+  # Restart required to switch (per design).
+  use-db: ${APP_USE_DB:true}
+  simulated-wait-ms: ${APP_SIMULATED_WAIT_MS:50}
+  vector:
+    # Standard Atlas Vector Search index over app-computed embeddings at `path`.
+    # Must match the seeded index.
+    index-name: ${APP_VECTOR_INDEX:products_vector_index}
+    path: embedding
+    num-dimensions: ${APP_VECTOR_DIMENSIONS:1024}
+    similarity: cosine
+    quantization: ${APP_VECTOR_QUANTIZATION:none}
+  embedding:
+    # Atlas-issued model API key -> https://ai.mongodb.com/v1/embeddings
+    # (a key made on voyageai.com directly -> https://api.voyageai.com/v1/embeddings).
+    api-key: ${EMBEDDING_API_KEY:${VOYAGE_API_KEY:}}
+    base-url: ${EMBEDDING_BASE_URL:https://ai.mongodb.com/v1/embeddings}
+    model: ${EMBEDDING_MODEL:voyage-4}
+    dimensions: ${APP_VECTOR_DIMENSIONS:1024}
+    batch-size: 128
+    max-retries: ${EMBEDDING_MAX_RETRIES:5}
+  seed:
+    # Seed runner sizing (profile "seed"). Defaults are large — override for a smaller run.
+    products: ${SEED_PRODUCTS:1000000}
+    customers: ${SEED_CUSTOMERS:10000}
+    orders: ${SEED_ORDERS:20000}
+    insert-batch-size: ${SEED_INSERT_BATCH:1000}
+    embed-concurrency: ${SEED_EMBED_CONCURRENCY:4}
+    generate-embeddings: ${SEED_GENERATE_EMBEDDINGS:true}
+    product-id-sample-cap: ${SEED_PRODUCT_ID_SAMPLE_CAP:50000}
+    index-only: ${SEED_INDEX_ONLY:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      # Expose /actuator/health/liveness and /actuator/health/readiness for k8s
+      # probes. These reflect app lifecycle only (not MongoDB), so simulated mode
+      # and transient DB blips don't flap readiness.
+      probes:
+        enabled: true
+      show-details: never
+
+logging:
+  level:
+    org.springframework.data.mongodb.core.MongoTemplate: INFO

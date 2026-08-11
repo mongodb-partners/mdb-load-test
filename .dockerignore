@@ -1,0 +1,10 @@
+target/
+.git/
+.idea/
+*.iml
+*.jtl
+*.log
+.env
+.env.deploy
+jmeter-report/
+.DS_Store

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mdb-load-test
+  labels:
+    app: mdb-load-test
+spec:
+  # ClusterIP by default. To drive load from outside the cluster, either
+  # `kubectl port-forward svc/mdb-load-test 8080:80` or change type to NodePort.
+  type: ClusterIP
+  selector:
+    app: mdb-load-test
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

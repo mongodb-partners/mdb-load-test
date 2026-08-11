@@ -1,0 +1,5 @@
+spring:
+  main:
+    # Seeding is a batch job — don't start the web server; the JVM exits when the
+    # CommandLineRunner completes.
+    web-application-type: none

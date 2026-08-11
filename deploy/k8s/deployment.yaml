@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mdb-load-test
+  labels:
+    app: mdb-load-test
+spec:
+  replicas: 1
+  # Recreate (not RollingUpdate) so we never need 2x 12-vCPU/32Gi at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mdb-load-test
+  template:
+    metadata:
+      labels:
+        app: mdb-load-test
+    spec:
+      # If the benchmark-api cluster cannot resolve the "*.external" MongoDB
+      # hostnames, uncomment and map them to the other cluster's node IPs:
+      # hostAliases:
+      #   - ip: "10.0.0.1"
+      #     hostnames: ["search-benchmarking-0.external"]
+      #   - ip: "10.0.0.2"
+      #     hostnames: ["search-benchmarking-1.external"]
+      #   - ip: "10.0.0.3"
+      #     hostnames: ["search-benchmarking-2.external"]
+      containers:
+        - name: mdb-load-test
+          image: __IMAGE__
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: mdb-load-test-mongo
+                  key: MONGODB_URI
+            # Only needed to embed text /search queries at runtime (JMeter sends
+            # pre-computed vectors, so this is optional for the load test).
+            - name: EMBEDDING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mdb-load-test-embedding
+                  key: EMBEDDING_API_KEY
+                  optional: true
+            - name: APP_USE_DB
+              value: "true"
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          volumeMounts:
+            - name: mongo-ca
+              mountPath: /etc/mongo
+              readOnly: true
+          resources:
+            requests:
+              cpu: "12"
+              memory: 32Gi
+            limits:
+              cpu: "12"
+              memory: 32Gi
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: mongo-ca
+          secret:
+            secretName: mdb-load-test-ca
