@@ -33,8 +33,9 @@ PORT        ?= 8080
 THREADS     ?= 20
 RAMP        ?= 10
 DURATION    ?= 120
-PRODUCT_ID  ?= REPLACE_WITH_SEEDED_ID
-CUSTOMER_ID ?= REPLACE_WITH_SEEDED_ID
+# Empty by default: use the ids baked into the jmx. Override to force different ones.
+PRODUCT_ID  ?=
+CUSTOMER_ID ?=
 
 # Load .env into a recipe shell if present (absent .env is a no-op).
 LOAD_ENV := set -a; [ -f .env ] && . ./.env; set +a
@@ -94,7 +95,8 @@ deploy: ## Deploy to the Nebius benchmark-api cluster (deploy/deploy.sh)
 	./deploy/deploy.sh
 
 ## --- load test ---
-loadtest: ## Run the JMeter plan headless -> results.jtl (set PORT/THREADS/PRODUCT_ID/…)
-	@$(LOAD_ENV); jmeter -n -t jmeter/loadtest.jmx -l results.jtl \
+loadtest: ## Run the JMeter plan headless -> results.jtl + HTML report (set PORT/THREADS/DURATION/…)
+	@rm -rf jmeter-report
+	@$(LOAD_ENV); jmeter -n -t jmeter/loadtest.jmx -l results.jtl -e -o jmeter-report \
 		-Jhost=$(HOST) -Jport=$(PORT) -Jthreads=$(THREADS) -Jramp=$(RAMP) -Jduration=$(DURATION) \
-		-JproductId=$(PRODUCT_ID) -JcustomerId=$(CUSTOMER_ID)
+		$(if $(PRODUCT_ID),-JproductId=$(PRODUCT_ID)) $(if $(CUSTOMER_ID),-JcustomerId=$(CUSTOMER_ID))
