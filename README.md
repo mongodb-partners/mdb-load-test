@@ -73,10 +73,27 @@ Settings live in `src/main/resources/application.yml` and are overridable via en
 
 Copy `.env.example` to `.env` and fill it in.
 
+## Make targets
+
+Common tasks are wrapped in a `Makefile` (run `make help` to list them):
+
+| Target | Does |
+|---|---|
+| `make build` | package the app → `target/*.jar` |
+| `make run` / `make run-sim` | run against MongoDB / in simulated mode |
+| `make seed` / `make seed-small` / `make seed-index-only` | seed data / small set / index only |
+| `make docker-build` / `make docker-run` | build / run the container image |
+| `make deploy` | run `deploy/deploy.sh` (Nebius `benchmark-api`) |
+| `make loadtest` | run the JMeter plan headless → `results.jtl` |
+
+Config comes from a local `.env` (sourced by recipes) or CLI overrides, e.g.
+`make seed SEED_PRODUCTS=10000` or `make loadtest PORT=8080 THREADS=50 PRODUCT_ID=<id>`.
+The Makefile pins `JAVA_HOME` to `/opt/homebrew/opt/openjdk@21` (override with `make build JAVA_HOME=…`).
+
 ## Build
 
 ```bash
-mvn clean package
+mvn clean package     # or: make build
 ```
 
 ## Seed data + create the vector index
@@ -122,7 +139,8 @@ mvn spring-boot:run
 
 ## API
 
-Base path `/api`. All bodies are JSON.
+Base path `/api`. All bodies are JSON. Interactive docs (Swagger UI) are served at
+**`http://<host>:<port>/docs`**; the OpenAPI JSON is at `/v3/api-docs`.
 
 ### Products `/api/products`
 | Method | Path | Purpose |
@@ -165,16 +183,21 @@ by a Groovy pre-processor each iteration) so the search benchmark hits MongoDB `
 directly, without the embedding API on the hot path. (For realistic end-to-end search including
 embedding, send `{"query":"…text…"}` instead.)
 
-For read/update samplers to hit real documents (in `use-db=true` mode), pass a seeded product/customer id:
+**Real ids are fetched automatically.** A `setUp Thread Group` calls `GET /api/products` and
+`GET /api/customers` once at startup, collects up to `idPoolSize` (default 200) real Mongo ids into
+JMeter properties, and a per-iteration pre-processor assigns a random one to `${PRODUCT_ID}` /
+`${CUSTOMER_ID}`. So `GET/PUT/{id}`, `bulk-get`, `bulk` update, and order creation all hit existing
+documents — no manual id wiring. (Requires `APP_USE_DB=true` and a seeded DB; with an empty DB or
+simulated mode the samplers fall back to a placeholder id.)
 
 ```bash
 jmeter -n -t jmeter/loadtest.jmx -l results.jtl -e -o jmeter-report \
-  -Jhost=localhost -Jport=8080 -Jthreads=50 -Jramp=15 -Jduration=180 \
-  -JproductId=<seeded-product-id> -JcustomerId=<seeded-customer-id>
+  -Jhost=localhost -Jport=8080 -Jthreads=50 -Jramp=15 -Jduration=180 -JidPoolSize=500
 ```
 
 Tunable `-J` props: `host, port, threads, ramp, duration, pageSize, searchLimit,
-searchNumCandidates, productId, customerId`.
+searchNumCandidates, idPoolSize`. (You can still pin ids with `-JproductId=… -JcustomerId=…`; the
+auto-fetch overrides them when the DB returns rows.)
 
 Compare a run with `APP_USE_DB=true` against one with `APP_USE_DB=false` (restart the app between
 runs) to isolate DB/search cost from the fixed baseline.
