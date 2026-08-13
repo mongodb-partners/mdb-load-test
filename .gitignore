@@ -10,3 +10,5 @@ deploy/.env.deploy
 *.iml
 .DS_Store
 jmeter-report/
+deploy/cred.txt
+cred.txt

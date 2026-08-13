@@ -66,8 +66,18 @@ public class ProductService extends BaseDataService {
     }
 
     public List<ProductResponse> list(int page, int size) {
+        // NOTE: repository.findAll(Pageable) returns a Page<T>, which always runs a
+        // separate count() over the WHOLE collection to populate totalElements -
+        // extremely expensive on a 1M+ document collection and unused here anyway
+        // (we only return .getContent()). Use MongoTemplate with skip/limit only
+        // to avoid that count() entirely.
         return execute(
-                () -> repository.findAll(PageRequest.of(page, size)).map(ProductResponse::from).getContent(),
+                () -> {
+                    Query query = new Query().with(PageRequest.of(page, size));
+                    return mongoTemplate.find(query, Product.class).stream()
+                            .map(ProductResponse::from)
+                            .toList();
+                },
                 () -> simulatedList(size));
     }
 

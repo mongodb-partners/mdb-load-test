@@ -38,6 +38,11 @@
             <stringProp name="Argument.value">${__P(duration,120)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
+          <elementProp name="LOOPS" elementType="Argument">
+            <stringProp name="Argument.name">LOOPS</stringProp>
+            <stringProp name="Argument.value">${__P(loops,375)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
           <elementProp name="PAGE_SIZE" elementType="Argument">
             <stringProp name="Argument.name">PAGE_SIZE</stringProp>
             <stringProp name="Argument.value">${__P(pageSize,20)}</stringProp>
@@ -98,21 +103,40 @@
         <stringProp name="ThreadGroup.ramp_time">${RAMP}</stringProp>
         <stringProp name="ThreadGroup.duration">${DURATION}</stringProp>
         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <!-- Combined mode: whichever limit is hit FIRST stops the thread -
+             LOOPS iterations complete, or DURATION seconds elapse. This
+             gives precise volume targeting (via LOOPS) with a hard time
+             safety cap (via DURATION). Set LOOPS=-1 to disable the loop
+             cap and run purely by duration instead. -->
         <boolProp name="ThreadGroup.scheduler">true</boolProp>
         <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller">
-          <intProp name="LoopController.loops">-1</intProp>
+          <stringProp name="LoopController.loops">${LOOPS}</stringProp>
           <boolProp name="LoopController.continue_forever">false</boolProp>
         </elementProp>
       </ThreadGroup>
       <hashTree>
-        <ThroughputController guiclass="ThroughputControllerGui" testclass="ThroughputController" testname="CREATE (25%)" enabled="true">
+        <!-- Paces total request rate so the run takes an observable duration
+             (matters for external monitoring like Ops Manager, which samples
+             on a fixed interval and won't show a clean signal for a run that
+             finishes in a couple of seconds). Set RATE_PER_MIN=0 to disable
+             pacing entirely and run at full speed. -->
+        <!-- Disabled: full speed is now the standard mode. Pacing was only
+             needed for an earlier Ops Manager visibility experiment that
+             didn't pan out. Re-enable + set -JratePerMin if pacing is ever
+             needed again. -->
+        <ConstantThroughputTimer guiclass="TestBeanGUI" testclass="ConstantThroughputTimer" testname="Constant Throughput Timer" enabled="false">
+          <stringProp name="throughput">${__P(ratePerMin,24000)}</stringProp>
+          <intProp name="calcMode">2</intProp>
+        </ConstantThroughputTimer>
+        <hashTree/>
+        <ThroughputController guiclass="ThroughputControllerGui" testclass="ThroughputController" testname="CREATE (3.08% trigger = ~write share)" enabled="true">
           <intProp name="ThroughputController.style">1</intProp>
           <boolProp name="ThroughputController.perThread">false</boolProp>
           <intProp name="ThroughputController.maxThroughput">1</intProp>
           <FloatProperty>
             <name>ThroughputController.percentThroughput</name>
-            <value>25.0</value>
+            <value>3.08</value>
             <savedValue>0.0</savedValue>
           </FloatProperty>
         </ThroughputController>
@@ -186,18 +210,18 @@
           </HTTPSamplerProxy>
           <hashTree/>
         </hashTree>
-        <ThroughputController guiclass="ThroughputControllerGui" testclass="ThroughputController" testname="READ (25%)" enabled="true">
+        <ThroughputController guiclass="ThroughputControllerGui" testclass="ThroughputController" testname="READ (22.22% trigger = ~read share)" enabled="true">
           <intProp name="ThroughputController.style">1</intProp>
           <boolProp name="ThroughputController.perThread">false</boolProp>
           <intProp name="ThroughputController.maxThroughput">1</intProp>
           <FloatProperty>
             <name>ThroughputController.percentThroughput</name>
-            <value>25.0</value>
+            <value>22.22</value>
             <savedValue>0.0</savedValue>
           </FloatProperty>
         </ThroughputController>
         <hashTree>
-          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /api/products (list)" enabled="true">
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /api/products (list)" enabled="false">
             <stringProp name="HTTPSampler.path">/api/products?page=0&amp;size=${PAGE_SIZE}</stringProp>
             <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
             <stringProp name="HTTPSampler.method">GET</stringProp>
@@ -248,13 +272,13 @@
           </HTTPSamplerProxy>
           <hashTree/>
         </hashTree>
-        <ThroughputController guiclass="ThroughputControllerGui" testclass="ThroughputController" testname="UPDATE (25%)" enabled="true">
+        <ThroughputController guiclass="ThroughputControllerGui" testclass="ThroughputController" testname="UPDATE (4.11% trigger = ~write share)" enabled="true">
           <intProp name="ThroughputController.style">1</intProp>
           <boolProp name="ThroughputController.perThread">false</boolProp>
           <intProp name="ThroughputController.maxThroughput">1</intProp>
           <FloatProperty>
             <name>ThroughputController.percentThroughput</name>
-            <value>25.0</value>
+            <value>4.11</value>
             <savedValue>0.0</savedValue>
           </FloatProperty>
         </ThroughputController>
@@ -311,13 +335,13 @@
           </HTTPSamplerProxy>
           <hashTree/>
         </hashTree>
-        <ThroughputController guiclass="ThroughputControllerGui" testclass="ThroughputController" testname="SEARCH (25%)" enabled="true">
+        <ThroughputController guiclass="ThroughputControllerGui" testclass="ThroughputController" testname="SEARCH (4% trigger = ~search share, 1 req/trigger)" enabled="true">
           <intProp name="ThroughputController.style">1</intProp>
           <boolProp name="ThroughputController.perThread">false</boolProp>
           <intProp name="ThroughputController.maxThroughput">1</intProp>
           <FloatProperty>
             <name>ThroughputController.percentThroughput</name>
-            <value>25.0</value>
+            <value>4.0</value>
             <savedValue>0.0</savedValue>
           </FloatProperty>
         </ThroughputController>
@@ -362,6 +386,12 @@ vars.put(&quot;SEARCH_BODY&quot;, sb.toString());</stringProp>
         <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report">
           <boolProp name="ResultCollector.error_logging">false</boolProp>
           <objProp>
+            <!-- Trimmed to essentials only: reduces per-sample CPU/IO overhead
+                 on the JMeter client at high throughput (13-27K samples/sec).
+                 Kept: time, timestamp, success, label (needed for awk/uniq
+                 breakdown), code, bytes, threadCounts. Disabled: message,
+                 threadName, dataType, assertions, subresults, url, idleTime,
+                 connectTime, sentBytes. -->
             <name>saveConfig</name>
             <value class="SampleSaveConfiguration">
               <time>true</time>
@@ -370,12 +400,12 @@ vars.put(&quot;SEARCH_BODY&quot;, sb.toString());</stringProp>
               <success>true</success>
               <label>true</label>
               <code>true</code>
-              <message>true</message>
-              <threadName>true</threadName>
-              <dataType>true</dataType>
+              <message>false</message>
+              <threadName>false</threadName>
+              <dataType>false</dataType>
               <encoding>false</encoding>
-              <assertions>true</assertions>
-              <subresults>true</subresults>
+              <assertions>false</assertions>
+              <subresults>false</subresults>
               <responseData>false</responseData>
               <samplerData>false</samplerData>
               <xml>false</xml>
@@ -383,14 +413,14 @@ vars.put(&quot;SEARCH_BODY&quot;, sb.toString());</stringProp>
               <responseHeaders>false</responseHeaders>
               <requestHeaders>false</requestHeaders>
               <responseDataOnError>false</responseDataOnError>
-              <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+              <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
               <assertionsResultsToSave>0</assertionsResultsToSave>
               <bytes>true</bytes>
-              <sentBytes>true</sentBytes>
-              <url>true</url>
+              <sentBytes>false</sentBytes>
+              <url>false</url>
               <threadCounts>true</threadCounts>
-              <idleTime>true</idleTime>
-              <connectTime>true</connectTime>
+              <idleTime>false</idleTime>
+              <connectTime>false</connectTime>
             </value>
           </objProp>
           <stringProp name="filename"></stringProp>

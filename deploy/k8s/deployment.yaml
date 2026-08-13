@@ -22,17 +22,17 @@ spec:
       labels:
         app: mdb-load-test
     spec:
-      # The benchmark-api cluster cannot resolve the "*.external" MongoDB
-      # hostnames, so map them to the mongodb cluster's node IPs (same VPC,
-      # 10.3.13.x subnet; externalTrafficPolicy=Cluster so any node IP works
-      # for any NodePort):
-      hostAliases:
-        - ip: "10.3.13.14"
-          hostnames: ["search-benchmarking-0.external"]
-        - ip: "10.3.13.20"
-          hostnames: ["search-benchmarking-1.external"]
-        - ip: "10.3.13.12"
-          hostnames: ["search-benchmarking-2.external"]
+      # If the benchmark-api cluster cannot resolve the "*.external" MongoDB
+      # hostnames, uncomment and map them to the other cluster's node IPs
+      # (same VPC/subnet as your MongoDB nodes; externalTrafficPolicy=Cluster
+      # means any node IP works for any NodePort):
+      # hostAliases:
+      #   - ip: "10.0.0.1"
+      #     hostnames: ["search-benchmarking-0.external"]
+      #   - ip: "10.0.0.2"
+      #     hostnames: ["search-benchmarking-1.external"]
+      #   - ip: "10.0.0.3"
+      #     hostnames: ["search-benchmarking-2.external"]
       imagePullSecrets:
         - name: nebius-registry-cred
       # The Java Mongo driver's `tlsCAFile` URI option doesn't reliably make the
@@ -46,6 +46,13 @@ spec:
             - sh
             - -c
             - |
+              # Start from the JDK's own default cacerts (has all standard
+              # public CAs, needed for Atlas) instead of an empty truststore,
+              # then ALSO add our self-hosted cluster's custom CA. This one
+              # truststore works for both Atlas (public CA) and the
+              # self-hosted search-benchmarking cluster (custom CA),
+              # regardless of which MONGODB_URI is currently active.
+              cp "$JAVA_HOME/lib/security/cacerts" /truststore/truststore.jks
               keytool -importcert -trustcacerts -noprompt \
                 -alias mongoCA -file /etc/mongo/ca.pem \
                 -keystore /truststore/truststore.jks -storepass changeit
@@ -78,6 +85,11 @@ spec:
                   optional: true
             - name: APP_USE_DB
               value: "true"
+            # Default Tomcat max-threads is 200; raise it so the pod can hold
+            # more concurrent in-flight requests when driving higher JMeter
+            # thread counts (paired with the Mongo maxPoolSize bump).
+            - name: SERVER_TOMCAT_THREADS_MAX
+              value: "400"
             - name: JAVA_OPTS
               value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -Djavax.net.ssl.trustStore=/truststore/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit"
           volumeMounts:
